@@ -1,14 +1,14 @@
 package types
 
 type Question struct {
-	ID          string
+	ID          int
 	Text        string
-	AnswerGroup []AnswerGroup
+	AnswerGroup []*AnswerGroup
 }
 
 type AnswerGroup struct {
 	ID      string
-	Answers []Answer
+	Answers []*Answer
 }
 
 type Answer struct {

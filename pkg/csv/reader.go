@@ -2,77 +2,75 @@ package csv
 
 import (
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
-	"log"
-	"math/rand"
 	"os"
 	"strings"
-	"time"
+
+	"github.com/enrichman/goess/pkg/types"
+	"golang.org/x/exp/slices"
 )
 
-func LoadFile() {
-	f, err := os.Open("listatoquizkb2019.csv")
+func LoadFile(filename string) ([]*types.Question, error) {
+	f, err := os.Open(filename)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("opening file '%s': %w", filename, err)
 	}
 
 	reader := csv.NewReader(f)
 	records, err := reader.ReadAll()
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("reading CSV file '%s': %w", filename, err)
 	}
 
-	questions := []*Question{}
-	var currentQuestion *Question
+	questionMap := map[string]*types.Question{}
 
-	for i, record := range records {
-		mod := i % 4
+	var currentQuestion *types.Question
 
-		if mod == 0 {
-			currentQuestion = &Question{
-				ID:              record[0],
-				Question:        capitalize(strings.ToLower(record[1])),
-				PossibleAnswers: []string{},
+	for _, record := range records {
+		answerGroupID := strings.TrimSpace(record[0])
+		text := strings.TrimSpace(record[1])
+
+		// if not empty this line is a new question
+		if answerGroupID != "" {
+			// check if the question was already there
+			if q, found := questionMap[text]; !found {
+				currentQuestion = &types.Question{
+					ID:          len(questionMap) + 1,
+					Text:        text,
+					AnswerGroup: []*types.AnswerGroup{},
+				}
+			} else {
+				currentQuestion = q
 			}
-			questions = append(questions, currentQuestion)
+
+			currentQuestion.AnswerGroup = append(currentQuestion.AnswerGroup, &types.AnswerGroup{
+				ID:      answerGroupID,
+				Answers: []*types.Answer{},
+			})
+
+			questionMap[text] = currentQuestion
 			continue
 		}
 
-		possibleAnswer := record[1]
-		possibleAnswer = strings.TrimPrefix(possibleAnswer, fmt.Sprintf("%d.", mod))
-		possibleAnswer = strings.TrimSpace(possibleAnswer)
-
-		currentQuestion.PossibleAnswers = append(currentQuestion.PossibleAnswers, possibleAnswer)
-
-		if strings.TrimSpace(strings.ToLower(record[2])) == "x" {
-			currentQuestion.Answer = mod
+		// this is an answer
+		correct := strings.ToLower(strings.TrimSpace(record[2]))
+		answer := &types.Answer{
+			Correct: (correct == "x"),
+			Text:    text,
 		}
+
+		// get the last answerGroup and append the answer
+		currentAnswerGroup := currentQuestion.AnswerGroup[len(currentQuestion.AnswerGroup)-1]
+		currentAnswerGroup.Answers = append(currentAnswerGroup.Answers, answer)
 	}
 
-	b, err := os.ReadFile("out.json")
-	if err != nil {
-		log.Fatal(err)
+	questions := []*types.Question{}
+	for _, v := range questionMap {
+		questions = append(questions, v)
 	}
-
-	var questions []Question
-	err = json.Unmarshal(b, &questions)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	random := rand.New(rand.NewSource(time.Now().UnixNano()))
-	random.Shuffle(len(questions), func(i, j int) {
-		questions[i], questions[j] = questions[j], questions[i]
+	slices.SortFunc(questions, func(a, b *types.Question) bool {
+		return a.ID < b.ID
 	})
 
-	quiz := questions[:20]
-
-	for _, q := range quiz {
-		fmt.Printf("%s) %s [%d]\n\n", q.ID, q.Question, q.Answer)
-		fmt.Println(" - ", q.PossibleAnswers[0])
-		fmt.Println(" - ", q.PossibleAnswers[1])
-		fmt.Println(" - ", q.PossibleAnswers[2])
-		fmt.Println()
-	}
+	return questions, nil
 }

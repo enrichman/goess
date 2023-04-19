@@ -1,12 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
-	"math/rand"
 	"os"
-	"time"
+
+	"github.com/enrichman/goess/pkg/csv"
+	"github.com/enrichman/goess/pkg/goess"
+	"golang.org/x/exp/slog"
 )
 
 type Question struct {
@@ -17,29 +17,25 @@ type Question struct {
 }
 
 func main() {
-	b, err := os.ReadFile("out.json")
+	questions, err := csv.LoadFile("quiz.csv")
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("loading CSV", "error", err)
+		os.Exit(1)
 	}
 
-	var questions []Question
-	err = json.Unmarshal(b, &questions)
-	if err != nil {
-		log.Fatal(err)
-	}
+	quiz := goess.NewQuiz(questions)
 
-	random := rand.New(rand.NewSource(time.Now().UnixNano()))
-	random.Shuffle(len(questions), func(i, j int) {
-		questions[i], questions[j] = questions[j], questions[i]
-	})
+	for _, q := range quiz.Questions {
+		answerGroup := q.AnswerGroup[0]
 
-	quiz := questions[:20]
-
-	for _, q := range quiz {
-		fmt.Printf("%s) %s [%d]\n\n", q.ID, q.Question, q.Answer)
-		fmt.Println(" - ", q.PossibleAnswers[0])
-		fmt.Println(" - ", q.PossibleAnswers[1])
-		fmt.Println(" - ", q.PossibleAnswers[2])
+		fmt.Printf("%s) %s\n\n", answerGroup.ID, q.Text)
+		for _, a := range answerGroup.Answers {
+			correct := " "
+			if a.Correct {
+				correct = "X"
+			}
+			fmt.Printf("[%s] %s\n", correct, a.Text)
+		}
 		fmt.Println()
 	}
 }
