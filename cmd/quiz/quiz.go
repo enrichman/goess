@@ -6,6 +6,7 @@ import (
 
 	"github.com/enrichman/goess/pkg/csv"
 	"github.com/enrichman/goess/pkg/goess"
+	"github.com/manifoldco/promptui"
 	"golang.org/x/exp/slog"
 )
 
@@ -25,17 +26,48 @@ func main() {
 
 	quiz := goess.NewQuiz(questions)
 
+	var totalCorrect int
 	for _, q := range quiz.Questions {
 		answerGroup := q.AnswerGroup[0]
 
-		fmt.Printf("%s) %s\n\n", answerGroup.ID, q.Text)
-		for _, a := range answerGroup.Answers {
-			correct := " "
-			if a.Correct {
-				correct = "X"
+		iconizer := func(correct bool) string {
+			if correct {
+				return promptui.IconGood
 			}
-			fmt.Printf("[%s] %s\n", correct, a.Text)
+			return promptui.IconBad
 		}
-		fmt.Println()
+
+		promptui.FuncMap["iconizer"] = iconizer
+
+		prompt := promptui.Select{
+			HideHelp: true,
+			Templates: &promptui.SelectTemplates{
+				Active:   fmt.Sprintf("%s {{ .Text | underline }}", promptui.IconSelect),
+				Inactive: `  {{ .Text }}`,
+				Selected: fmt.Sprintf(`{{ .Correct | iconizer }} (%s) {{ .Text | faint }}`, answerGroup.ID),
+				//Selected: `{{ .Correct | iconizer }} (` + answerGroup.ID + `) {{ .Text | faint }}`,
+			},
+			Label: fmt.Sprintf("%s) %s", answerGroup.ID, q.Text),
+			Items: answerGroup.Answers,
+		}
+
+		i, _, err := prompt.Run()
+		if err != nil {
+			slog.Error("prompt", "error", err, "i", i)
+			os.Exit(1)
+		}
+
+		if answerGroup.Answers[i].Correct {
+			totalCorrect += 1
+		} else {
+			for _, a := range answerGroup.Answers {
+				if a.Correct {
+					fmt.Println("  " + a.Text)
+				}
+			}
+		}
 	}
+
+	fmt.Printf("\nTotal: %d/%d\n", totalCorrect, len(quiz.Questions))
+
 }
